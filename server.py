@@ -8,72 +8,83 @@ import httpx
 import os
 from typing import Optional
 
-mcp = FastMCP("unfolded-circle-core-apis")
+mcp = FastMCP("unfolded-circle-core-api")
 
-# Base URLs for Unfolded Circle documentation and API specs
+# Base URLs for Unfolded Circle documentation
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com/unfoldedcircle/core-api/main"
 GITHUB_API_BASE = "https://api.github.com/repos/unfoldedcircle/core-api"
 DEV_GUIDE_BASE = "https://unfoldedcircle.github.io/core-api"
 
 
-async def fetch_url(url: str) -> str:
-    """Fetch content from a URL, return text or error message."""
-    try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+async def fetch_github_content(path: str) -> str:
+    """Fetch raw content from GitHub repository."""
+    url = f"{GITHUB_RAW_BASE}/{path}"
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
             response = await client.get(url)
             if response.status_code == 200:
                 return response.text
             else:
-                return f"Error fetching {url}: HTTP {response.status_code}"
-    except Exception as e:
-        return f"Error fetching {url}: {str(e)}"
+                return f"Could not fetch content from {url} (status {response.status_code})"
+        except Exception as e:
+            return f"Error fetching content: {str(e)}"
+
+
+async def fetch_multiple_paths(paths: list) -> dict:
+    """Fetch multiple GitHub paths and return combined results."""
+    results = {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for path in paths:
+            url = f"{GITHUB_RAW_BASE}/{path}"
+            try:
+                response = await client.get(url)
+                if response.status_code == 200:
+                    results[path] = response.text
+                else:
+                    results[path] = f"Not found (status {response.status_code})"
+            except Exception as e:
+                results[path] = f"Error: {str(e)}"
+    return results
 
 
 @mcp.tool()
 async def get_api_overview() -> dict:
-    """Get a high-level overview of all available Unfolded Circle Core APIs including Integration API, Core API (REST and WebSocket), and Dock API. Use this first to understand what APIs are available and which one to use for a given task."""
-    readme_content = await fetch_url(f"{GITHUB_RAW_BASE}/README.md")
+    """Get an overview of all available Unfolded Circle Core APIs including Integration API, Core API (REST and WebSocket), and Dock API. Use this as the starting point to understand what APIs are available and how they relate to each other."""
+    readme_content = await fetch_github_content("README.md")
     
     overview = {
-        "source": f"{GITHUB_RAW_BASE}/README.md",
-        "developer_guide": "https://unfoldedcircle.github.io/core-api",
-        "github_repo": "https://github.com/unfoldedcircle/core-api",
+        "title": "Unfolded Circle Core APIs Overview",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "github_repository": "https://github.com/unfoldedcircle/core-api",
         "apis": {
             "integration_api": {
-                "description": "WebSocket Integration API for writing device integrations (external drivers)",
+                "description": "WebSocket Integration-API for writing device integrations for Unfolded Circle Remote devices",
                 "type": "WebSocket (AsyncAPI)",
-                "readme": f"{GITHUB_RAW_BASE}/integration-api/README.md",
-                "spec": f"{GITHUB_RAW_BASE}/integration-api/asyncapi.yaml",
-                "use_case": "Build external device integration drivers that the Remote connects to"
-            },
-            "core_api_rest": {
-                "description": "REST Core API for controlling and configuring the Remote device",
-                "type": "REST (OpenAPI)",
-                "readme": f"{GITHUB_RAW_BASE}/core-api/rest/README.md",
-                "spec": f"{GITHUB_RAW_BASE}/core-api/rest/openapi.yaml",
-                "use_case": "Manage activities, macros, remotes, system settings, UI configuration"
+                "readme": "https://github.com/unfoldedcircle/core-api/blob/main/integration-api/README.md",
+                "notes": "Integration driver acts as server, Remote device acts as client. Supports entity integration for home automation."
             },
             "core_api_websocket": {
-                "description": "WebSocket Core API for real-time control of the Remote device",
+                "description": "WebSocket Core-API for real-time control and configuration of the Remote device",
                 "type": "WebSocket (AsyncAPI)",
-                "readme": f"{GITHUB_RAW_BASE}/core-api/websocket/README.md",
-                "spec": f"{GITHUB_RAW_BASE}/core-api/websocket/asyncapi.yaml",
-                "use_case": "Real-time events and control of the Remote device"
+                "readme": "https://github.com/unfoldedcircle/core-api/blob/main/core-api/websocket/README.md"
+            },
+            "core_api_rest": {
+                "description": "REST Core-API for controlling and configuring the Unfolded Circle Remote device",
+                "type": "REST (OpenAPI)",
+                "readme": "https://github.com/unfoldedcircle/core-api/blob/main/core-api/rest/README.md"
             },
             "dock_api": {
-                "description": "WebSocket Dock API for communicating with Unfolded Circle dock hardware",
+                "description": "WebSocket Dock-API for communicating with Unfolded Circle dock hardware",
                 "type": "WebSocket (AsyncAPI)",
-                "readme": f"{GITHUB_RAW_BASE}/dock-api/README.md",
-                "spec": f"{GITHUB_RAW_BASE}/dock-api/asyncapi.yaml",
-                "use_case": "Interact with charging dock or dock-specific features"
+                "readme": "https://github.com/unfoldedcircle/core-api/blob/main/dock-api/README.md"
             }
         },
         "additional_docs": {
-            "remote_ui": f"{GITHUB_RAW_BASE}/doc/remote-ui.md",
-            "bluetooth_hid": f"{GITHUB_RAW_BASE}/doc/bt/README.md",
-            "entities": f"{GITHUB_RAW_BASE}/doc/entities/README.md",
-            "write_driver": f"{GITHUB_RAW_BASE}/doc/integration-driver/write-integration-driver.md",
-            "websocket_handling": f"{GITHUB_RAW_BASE}/doc/integration-driver/websocket.md"
+            "remote_ui": "Remote Two user interface documentation",
+            "bluetooth_hid": "Bluetooth HID peripheral support",
+            "entities": "Remote Two entity types for integration drivers",
+            "write_driver": "Guide on how to write an integration driver",
+            "websocket_handling": "WebSocket authentication, keep alive, error handling"
         },
         "readme_content": readme_content
     }
@@ -82,199 +93,418 @@ async def get_api_overview() -> dict:
 
 @mcp.tool()
 async def get_integration_api_docs(section: Optional[str] = "overview") -> dict:
-    """Retrieve documentation and specifications for the WebSocket Integration API used to write device integrations for Unfolded Circle Remote devices. Use this when building or understanding external integration drivers, handling authentication, keep-alive, or error handling over WebSocket."""
+    """Retrieve documentation and specifications for the WebSocket Integration API used to write device integrations for Unfolded Circle Remote devices. Use this when building or understanding external integration drivers, entity support, or WebSocket authentication/keep-alive handling.
     
+    Args:
+        section: The section of integration API docs to retrieve. Options: 'overview', 'entities', 'websocket', 'write-driver', 'authentication'. Defaults to overview.
+    """
     section = section or "overview"
+    section = section.lower().strip()
     
-    section_urls = {
-        "overview": f"{GITHUB_RAW_BASE}/integration-api/README.md",
-        "authentication": f"{GITHUB_RAW_BASE}/doc/integration-driver/websocket.md",
-        "websocket": f"{GITHUB_RAW_BASE}/doc/integration-driver/websocket.md",
-        "entities": f"{GITHUB_RAW_BASE}/doc/entities/README.md",
-        "write-driver": f"{GITHUB_RAW_BASE}/doc/integration-driver/write-integration-driver.md"
+    section_map = {
+        "overview": ["integration-api/README.md"],
+        "entities": ["doc/entities/README.md"],
+        "websocket": ["doc/integration-driver/websocket.md"],
+        "write-driver": ["doc/integration-driver/write-integration-driver.md"],
+        "authentication": ["doc/integration-driver/websocket.md"]
     }
     
-    url = section_urls.get(section, section_urls["overview"])
-    content = await fetch_url(url)
-    
-    # Also fetch the AsyncAPI spec for the overview
-    spec_content = None
-    if section == "overview":
-        spec_content = await fetch_url(f"{GITHUB_RAW_BASE}/integration-api/asyncapi.yaml")
+    paths = section_map.get(section, section_map["overview"])
     
     result = {
         "section": section,
-        "source_url": url,
-        "available_sections": list(section_urls.keys()),
-        "spec_url": f"{GITHUB_RAW_BASE}/integration-api/asyncapi.yaml",
+        "title": "Unfolded Circle WebSocket Integration API",
+        "api_type": "WebSocket (AsyncAPI)",
+        "github_url": "https://github.com/unfoldedcircle/core-api/tree/main/integration-api",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "content": {}
+    }
+    
+    for path in paths:
+        content = await fetch_github_content(path)
+        result["content"][path] = content
+    
+    # Add section-specific metadata
+    if section == "overview":
+        result["description"] = (
+            "The WebSocket Integration API allows writing device integrations for Remote devices. "
+            "The integration driver acts as server and the Remote device as client."
+        )
+        result["key_concepts"] = [
+            "Integration driver acts as WebSocket server",
+            "Remote device connects as WebSocket client",
+            "Supports external integrations and on-device drivers (beta 1.9.0+)",
+            "Focus on entity integration, not device control",
+            "Entity types: button, switch, light, media_player, climate, sensor, etc."
+        ]
+    elif section == "authentication":
+        result["description"] = "WebSocket authentication, keep-alive, and error handling for integration drivers."
+    elif section == "write-driver":
+        result["description"] = "Step-by-step guide to writing an integration driver for Unfolded Circle Remote devices."
+    
+    return result
+
+
+@mcp.tool()
+async def get_core_api_docs(api_type: Optional[str] = "rest", section: Optional[str] = None) -> dict:
+    """Retrieve documentation for the Core API, which covers both the WebSocket Core-API and the REST Core-API for controlling and configuring the Unfolded Circle Remote device. Use this when you need to understand device control, configuration endpoints, or real-time communication with the remote.
+    
+    Args:
+        api_type: Which Core API type to retrieve docs for. Options: 'rest', 'websocket'. Defaults to 'rest'.
+        section: Optional specific section or topic within the Core API docs to focus on, e.g. 'authentication', 'endpoints', 'events'.
+    """
+    api_type = (api_type or "rest").lower().strip()
+    
+    path_map = {
+        "rest": "core-api/rest/README.md",
+        "websocket": "core-api/websocket/README.md"
+    }
+    
+    path = path_map.get(api_type, path_map["rest"])
+    content = await fetch_github_content(path)
+    
+    result = {
+        "api_type": api_type,
+        "title": f"Unfolded Circle Core API - {api_type.upper()}",
+        "github_url": f"https://github.com/unfoldedcircle/core-api/tree/main/core-api/{api_type}",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
         "content": content
     }
     
-    if spec_content:
-        result["asyncapi_spec"] = spec_content
+    if api_type == "rest":
+        result["description"] = (
+            "The REST Core-API provides HTTP endpoints for controlling and configuring the Unfolded Circle Remote. "
+            "Defined with OpenAPI specification."
+        )
+        result["openapi_spec"] = "https://github.com/unfoldedcircle/core-api/blob/main/core-api/rest/openapi.yaml"
+        result["key_features"] = [
+            "Device configuration and status",
+            "Integration management",
+            "Entity and activity configuration",
+            "Profile and UI customization",
+            "Firmware updates"
+        ]
+    elif api_type == "websocket":
+        result["description"] = (
+            "The WebSocket Core-API provides real-time bidirectional communication with the Remote device. "
+            "Defined with AsyncAPI specification."
+        )
+        result["asyncapi_spec"] = "https://github.com/unfoldedcircle/core-api/blob/main/core-api/websocket/asyncapi.yaml"
+        result["key_features"] = [
+            "Real-time device events",
+            "Entity state updates",
+            "Activity execution",
+            "System events and notifications"
+        ]
+    
+    if section:
+        result["requested_section"] = section
+        result["note"] = f"For detailed '{section}' information, refer to the content above and the developer guide."
     
     return result
 
 
 @mcp.tool()
 async def get_entity_docs(entity_type: Optional[str] = None) -> dict:
-    """Retrieve documentation about Remote Two entities supported by integration drivers. Use this when you need to understand what entity types exist (e.g., lights, media players, sensors), their attributes, and how to implement them in a driver."""
+    """Retrieve documentation about Remote Two entity types supported by integration drivers, such as buttons, switches, media players, climate controls, etc. Use this when designing or implementing integration driver entities, understanding entity attributes, commands, or state models.
     
-    # Known entity types and their doc paths
-    entity_files = {
-        "overview": f"{GITHUB_RAW_BASE}/doc/entities/README.md",
-        "light": f"{GITHUB_RAW_BASE}/doc/entities/entity_light.md",
-        "media_player": f"{GITHUB_RAW_BASE}/doc/entities/entity_media_player.md",
-        "sensor": f"{GITHUB_RAW_BASE}/doc/entities/entity_sensor.md",
-        "button": f"{GITHUB_RAW_BASE}/doc/entities/entity_button.md",
-        "climate": f"{GITHUB_RAW_BASE}/doc/entities/entity_climate.md",
-        "switch": f"{GITHUB_RAW_BASE}/doc/entities/entity_switch.md",
-        "cover": f"{GITHUB_RAW_BASE}/doc/entities/entity_cover.md",
-        "remote": f"{GITHUB_RAW_BASE}/doc/entities/entity_remote.md"
+    Args:
+        entity_type: Specific entity type to look up, e.g. 'button', 'switch', 'media_player', 'climate', 'light', 'sensor'. Leave null to get an overview of all entity types.
+    """
+    entity_file_map = {
+        "button": "doc/entities/button.md",
+        "switch": "doc/entities/switch.md",
+        "media_player": "doc/entities/media_player.md",
+        "climate": "doc/entities/climate.md",
+        "light": "doc/entities/light.md",
+        "sensor": "doc/entities/sensor.md",
+        "cover": "doc/entities/cover.md",
+        "remote": "doc/entities/remote.md",
+        "activity": "doc/entities/activity.md"
     }
     
-    results = {}
+    result = {
+        "title": "Unfolded Circle Remote Two - Entity Types",
+        "github_url": "https://github.com/unfoldedcircle/core-api/tree/main/doc/entities",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "available_entity_types": list(entity_file_map.keys()),
+        "content": {}
+    }
     
-    if entity_type is None:
-        # Fetch overview and all entity docs
-        overview_content = await fetch_url(entity_files["overview"])
-        results["overview"] = {
-            "source_url": entity_files["overview"],
-            "content": overview_content
-        }
-        results["available_entity_types"] = [k for k in entity_files.keys() if k != "overview"]
-        results["note"] = "Specify an entity_type parameter to get detailed docs for a specific entity"
-    else:
-        entity_type_lower = entity_type.lower()
-        if entity_type_lower in entity_files:
-            content = await fetch_url(entity_files[entity_type_lower])
-            results["entity_type"] = entity_type_lower
-            results["source_url"] = entity_files[entity_type_lower]
-            results["content"] = content
+    if entity_type:
+        entity_type = entity_type.lower().strip()
+        path = entity_file_map.get(entity_type)
+        if path:
+            content = await fetch_github_content(path)
+            result["entity_type"] = entity_type
+            result["content"][entity_type] = content
         else:
-            # Try to fetch anyway with the provided name
-            url = f"{GITHUB_RAW_BASE}/doc/entities/entity_{entity_type_lower}.md"
-            content = await fetch_url(url)
-            results["entity_type"] = entity_type_lower
-            results["source_url"] = url
-            results["content"] = content
-            results["available_entity_types"] = [k for k in entity_files.keys() if k != "overview"]
+            result["error"] = f"Unknown entity type '{entity_type}'. Available types: {list(entity_file_map.keys())}"
+            # Fall back to overview
+            overview = await fetch_github_content("doc/entities/README.md")
+            result["content"]["overview"] = overview
+    else:
+        # Get overview
+        overview = await fetch_github_content("doc/entities/README.md")
+        result["content"]["overview"] = overview
+        result["entity_descriptions"] = {
+            "button": "Simple button entity for triggering actions",
+            "switch": "On/off switch entity",
+            "media_player": "Media player with playback controls, volume, source selection",
+            "climate": "Climate control with temperature, HVAC modes, fan modes",
+            "light": "Light entity with on/off, brightness, color, color temperature",
+            "sensor": "Read-only sensor for data values",
+            "cover": "Cover/blind/curtain control",
+            "remote": "IR/RF remote control entity",
+            "activity": "Activity macro entity for sequences of commands"
+        }
     
-    return results
+    return result
 
 
 @mcp.tool()
-async def get_core_api_docs(api_type: Optional[str] = "rest", section: Optional[str] = None) -> dict:
-    """Retrieve documentation for the Core API (either REST or WebSocket). Use this when you need to control or configure the Remote device itself — such as managing activities, macros, remotes, system settings, or UI configuration — rather than writing an integration driver."""
+async def get_dock_api_docs(section: Optional[str] = "overview") -> dict:
+    """Retrieve documentation and specifications for the WebSocket Dock API used to communicate with Unfolded Circle dock hardware. Use this when integrating with or building firmware/software that interacts with the dock accessory.
     
-    api_type = (api_type or "rest").lower()
+    Args:
+        section: Section of the Dock API documentation to retrieve. Options: 'overview', 'messages', 'authentication', 'events'.
+    """
+    section = (section or "overview").lower().strip()
     
-    if api_type == "rest":
-        readme_url = f"{GITHUB_RAW_BASE}/core-api/rest/README.md"
-        spec_url = f"{GITHUB_RAW_BASE}/core-api/rest/openapi.yaml"
-        spec_type = "OpenAPI"
-    else:
-        readme_url = f"{GITHUB_RAW_BASE}/core-api/websocket/README.md"
-        spec_url = f"{GITHUB_RAW_BASE}/core-api/websocket/asyncapi.yaml"
-        spec_type = "AsyncAPI"
+    # Dock API paths
+    dock_paths = {
+        "overview": ["dock-api/README.md"],
+        "messages": ["dock-api/README.md"],
+        "authentication": ["dock-api/README.md"],
+        "events": ["dock-api/README.md"]
+    }
     
-    readme_content = await fetch_url(readme_url)
-    spec_content = await fetch_url(spec_url)
+    paths = dock_paths.get(section, dock_paths["overview"])
     
     result = {
-        "api_type": api_type,
-        "spec_type": spec_type,
-        "readme_url": readme_url,
-        "spec_url": spec_url,
-        "readme_content": readme_content,
-        "spec_content": spec_content
+        "section": section,
+        "title": "Unfolded Circle WebSocket Dock API",
+        "api_type": "WebSocket (AsyncAPI)",
+        "github_url": "https://github.com/unfoldedcircle/core-api/tree/main/dock-api",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "content": {}
+    }
+    
+    for path in paths:
+        content = await fetch_github_content(path)
+        result["content"][path] = content
+    
+    result["description"] = (
+        "The WebSocket Dock API enables communication with the Unfolded Circle dock hardware accessory. "
+        "Used for firmware/software development interacting with the dock device."
+    )
+    result["key_features"] = [
+        "WebSocket-based bidirectional communication",
+        "Dock hardware control and status",
+        "IR blaster control",
+        "Charging dock functionality",
+        "Authentication and session management"
+    ]
+    
+    if section != "overview":
+        result["section_note"] = (
+            f"For '{section}' specific details, refer to the content above. "
+            f"The full AsyncAPI specification is available in the dock-api directory."
+        )
+    
+    return result
+
+
+@mcp.tool()
+async def get_remote_ui_docs(section: Optional[str] = None) -> dict:
+    """Retrieve documentation about the Remote Two user interface, including UI layout, page structure, button mappings, and UI customization options. Use this when designing UI configurations or understanding how the physical remote interface is structured.
+    
+    Args:
+        section: Specific UI documentation section to retrieve, e.g. 'layout', 'pages', 'buttons', 'profiles'. Leave null for full UI overview.
+    """
+    content = await fetch_github_content("doc/remote-ui.md")
+    
+    result = {
+        "title": "Unfolded Circle Remote Two - User Interface Documentation",
+        "github_url": "https://github.com/unfoldedcircle/core-api/blob/main/doc/remote-ui.md",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "content": content
+    }
+    
+    result["ui_structure"] = {
+        "description": "The Remote Two features a touchscreen display with customizable UI",
+        "key_concepts": [
+            "Pages: Individual screens/views on the remote",
+            "Profiles: User-specific UI configurations",
+            "Groups: Logical groupings of entities and activities",
+            "Buttons: Physical button mappings and assignments",
+            "Activities: Macro sequences shown on the UI",
+            "Entities: Device controls displayed on pages"
+        ]
     }
     
     if section:
         result["requested_section"] = section
-        result["note"] = f"The full spec has been returned above. Search for '{section}' within the spec_content to find the relevant section."
+        result["section_note"] = (
+            f"For '{section}' specific information, refer to the full content above. "
+            f"Use the Core REST API to programmatically configure UI elements."
+        )
     
     return result
 
 
 @mcp.tool()
-async def get_dock_api_docs() -> dict:
-    """Retrieve documentation for the WebSocket Dock API used to communicate with Unfolded Circle dock hardware. Use this when building software that interacts with the charging dock or dock-specific features."""
+async def get_bluetooth_hid_docs(section: Optional[str] = "overview") -> dict:
+    """Retrieve documentation for Bluetooth HID peripheral support on the Unfolded Circle Remote. Use this when working with Bluetooth Human Interface Device features, pairing, or HID descriptor configurations.
     
-    readme_url = f"{GITHUB_RAW_BASE}/dock-api/README.md"
-    spec_url = f"{GITHUB_RAW_BASE}/dock-api/asyncapi.yaml"
+    Args:
+        section: Section of the Bluetooth HID documentation to retrieve. Options: 'overview', 'pairing', 'descriptors', 'profiles'.
+    """
+    section = (section or "overview").lower().strip()
     
-    readme_content = await fetch_url(readme_url)
-    spec_content = await fetch_url(spec_url)
-    
-    return {
-        "api_name": "WebSocket Dock API",
-        "spec_type": "AsyncAPI",
-        "readme_url": readme_url,
-        "spec_url": spec_url,
-        "readme_content": readme_content,
-        "spec_content": spec_content
-    }
-
-
-@mcp.tool()
-async def get_remote_ui_docs(topic: Optional[str] = None) -> dict:
-    """Retrieve documentation about the Remote Two user interface design, layout, and UI concepts. Use this when you need to understand how the Remote UI works, how pages and widgets are structured, or how to customize the interface."""
-    
-    main_url = f"{GITHUB_RAW_BASE}/doc/remote-ui.md"
-    main_content = await fetch_url(main_url)
+    # Fetch BT README
+    bt_readme = await fetch_github_content("doc/bt/README.md")
     
     result = {
-        "source_url": main_url,
-        "content": main_content
+        "section": section,
+        "title": "Unfolded Circle Remote - Bluetooth HID Peripheral Support",
+        "github_url": "https://github.com/unfoldedcircle/core-api/tree/main/doc/bt",
+        "developer_guide_url": "https://unfoldedcircle.github.io/core-api",
+        "content": {
+            "readme": bt_readme
+        }
     }
     
-    if topic:
-        result["requested_topic"] = topic
-        result["note"] = f"Search for '{topic}' within the content above to find the relevant section."
-        
-        # Try to also fetch any related pages doc if it exists
-        topic_lower = topic.lower()
-        extra_urls = {
-            "pages": f"{GITHUB_RAW_BASE}/doc/remote-ui.md",
-            "widgets": f"{GITHUB_RAW_BASE}/doc/remote-ui.md",
-            "layout": f"{GITHUB_RAW_BASE}/doc/remote-ui.md",
-            "navigation": f"{GITHUB_RAW_BASE}/doc/remote-ui.md",
-            "buttons": f"{GITHUB_RAW_BASE}/doc/remote-ui.md"
-        }
-        if topic_lower in extra_urls:
-            result["topic_hint"] = f"The main remote-ui.md document covers {topic}. Review the content field above."
-    
-    return result
-
-
-@mcp.tool()
-async def get_bluetooth_hid_docs() -> dict:
-    """Retrieve documentation about Bluetooth HID (Human Interface Device) peripheral support on Unfolded Circle Remote devices. Use this when you need to understand BT HID profiles, pairing, or using the Remote as a Bluetooth peripheral."""
-    
-    readme_url = f"{GITHUB_RAW_BASE}/doc/bt/README.md"
-    readme_content = await fetch_url(readme_url)
-    
-    # Try to fetch additional BT docs if they exist
-    additional_urls = [
-        f"{GITHUB_RAW_BASE}/doc/bt/bluetooth-hid.md",
-        f"{GITHUB_RAW_BASE}/doc/bt/bt-hid.md"
+    result["description"] = (
+        "The Unfolded Circle Remote supports Bluetooth HID peripheral mode, "
+        "allowing it to act as a Bluetooth Human Interface Device."
+    )
+    result["key_features"] = [
+        "Bluetooth HID peripheral mode",
+        "Device pairing and bonding",
+        "HID descriptor configuration",
+        "Keyboard and media control profiles",
+        "Custom HID profiles"
     ]
     
-    additional_content = {}
-    for url in additional_urls:
-        content = await fetch_url(url)
-        if not content.startswith("Error"):
-            additional_content[url] = content
-    
-    result = {
-        "api_name": "Bluetooth HID Peripheral Support",
-        "readme_url": readme_url,
-        "content": readme_content
+    # Try to fetch additional BT docs based on section
+    section_paths = {
+        "pairing": "doc/bt/pairing.md",
+        "descriptors": "doc/bt/descriptors.md",
+        "profiles": "doc/bt/profiles.md"
     }
     
-    if additional_content:
-        result["additional_docs"] = additional_content
+    if section in section_paths:
+        additional_content = await fetch_github_content(section_paths[section])
+        result["content"][section] = additional_content
+    
+    return result
+
+
+@mcp.tool()
+async def search_developer_guide(query: str, api_scope: Optional[str] = None) -> dict:
+    """Search across the full Unfolded Circle Developer Guide documentation for a specific topic, concept, or keyword. Use this when you need to find information about a specific feature, API behavior, or implementation detail across all API types and documentation sections.
+    
+    Args:
+        query: The search query or topic to look up in the developer guide, e.g. 'authentication', 'keep alive', 'IR codes', 'custom driver install'.
+        api_scope: Optionally narrow the search to a specific API scope. Options: 'integration', 'core-rest', 'core-websocket', 'dock', 'ui', 'bluetooth'. Leave null to search all docs.
+    """
+    query_lower = query.lower()
+    
+    # Define scope-to-paths mapping
+    scope_paths = {
+        "integration": [
+            "integration-api/README.md",
+            "doc/integration-driver/write-integration-driver.md",
+            "doc/integration-driver/websocket.md",
+            "doc/entities/README.md"
+        ],
+        "core-rest": [
+            "core-api/rest/README.md"
+        ],
+        "core-websocket": [
+            "core-api/websocket/README.md"
+        ],
+        "dock": [
+            "dock-api/README.md"
+        ],
+        "ui": [
+            "doc/remote-ui.md"
+        ],
+        "bluetooth": [
+            "doc/bt/README.md"
+        ]
+    }
+    
+    # All paths for broad search
+    all_paths = [
+        "README.md",
+        "integration-api/README.md",
+        "doc/integration-driver/write-integration-driver.md",
+        "doc/integration-driver/websocket.md",
+        "doc/entities/README.md",
+        "core-api/rest/README.md",
+        "core-api/websocket/README.md",
+        "dock-api/README.md",
+        "doc/remote-ui.md",
+        "doc/bt/README.md"
+    ]
+    
+    if api_scope and api_scope.lower() in scope_paths:
+        paths_to_search = scope_paths[api_scope.lower()]
+    else:
+        paths_to_search = all_paths
+    
+    result = {
+        "query": query,
+        "api_scope": api_scope,
+        "developer_guide_url": f"https://unfoldedcircle.github.io/core-api",
+        "search_note": f"Searched documentation for '{query}'",
+        "matches": {},
+        "summary": ""
+    }
+    
+    # Fetch content from relevant paths
+    contents = await fetch_multiple_paths(paths_to_search)
+    
+    matched_sections = []
+    
+    for path, content in contents.items():
+        if isinstance(content, str) and query_lower in content.lower():
+            # Find relevant excerpts
+            lines = content.split('\n')
+            relevant_lines = []
+            for i, line in enumerate(lines):
+                if query_lower in line.lower():
+                    # Include surrounding context
+                    start = max(0, i - 2)
+                    end = min(len(lines), i + 5)
+                    excerpt = '\n'.join(lines[start:end])
+                    relevant_lines.append(excerpt)
+            
+            if relevant_lines:
+                result["matches"][path] = {
+                    "found": True,
+                    "excerpts": relevant_lines[:5],  # Limit to 5 excerpts per file
+                    "full_content_available": True
+                }
+                matched_sections.append(path)
+    
+    if matched_sections:
+        result["summary"] = f"Found '{query}' in {len(matched_sections)} documentation file(s): {', '.join(matched_sections)}"
+    else:
+        result["summary"] = f"No direct matches found for '{query}'. Try the developer guide at https://unfoldedcircle.github.io/core-api for full-text search."
+        # Include main README as fallback
+        result["fallback_content"] = contents.get("README.md", "")
+    
+    result["helpful_links"] = {
+        "developer_guide": "https://unfoldedcircle.github.io/core-api",
+        "github_repo": "https://github.com/unfoldedcircle/core-api",
+        "integration_api": "https://github.com/unfoldedcircle/core-api/tree/main/integration-api",
+        "core_rest_api": "https://github.com/unfoldedcircle/core-api/tree/main/core-api/rest",
+        "core_ws_api": "https://github.com/unfoldedcircle/core-api/tree/main/core-api/websocket",
+        "dock_api": "https://github.com/unfoldedcircle/core-api/tree/main/dock-api"
+    }
     
     return result
 
