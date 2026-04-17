@@ -1,5 +1,4 @@
 fastmcp
 httpx
-python-dotenv
 starlette
 uvicorn
